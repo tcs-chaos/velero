@@ -192,7 +192,7 @@ shell: build-dirs build-env
 		$(BUILDER_IMAGE) \
 		/bin/sh $(CMD)
 
-container:
+container: vendor
 ifneq ($(BUILDX_ENABLED), true)
 	$(error $(BUILDX_ERROR))
 endif
@@ -237,6 +237,11 @@ endif
 lint:
 ifneq ($(SKIP_TESTS), 1)
 	@$(MAKE) shell CMD="-c 'hack/lint.sh'"
+endif
+
+vendor:
+ifneq ($(SKIP_TESTS), 1)
+	@$(MAKE) shell CMD="-c 'go work vendor'"
 endif
 
 local-lint:
