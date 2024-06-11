@@ -43,6 +43,8 @@ type volumeConditions struct {
 	NFS          *nFSVolumeSource  `yaml:"nfs,omitempty"`
 	CSI          *csiVolumeSource  `yaml:"csi,omitempty"`
 	VolumeTypes  []SupportedVolume `yaml:"volumeTypes,omitempty"`
+
+	MatchExpressions matchExpressionConditionList `yaml:"matchExpressions,omitempty"`
 }
 
 func (c *capacityCondition) validate() error {

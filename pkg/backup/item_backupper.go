@@ -154,8 +154,27 @@ func (ib *itemBackupper) backupItemInternal(logger logrus.FieldLogger, obj runti
 			log.Info("Excluding item because resource is excluded")
 			return false, itemFiles, nil
 		}
-	}
 
+		action, err := ib.getMatchGenericAction(obj)
+		if err != nil {
+			log.Errorf("Error getting match generic action: %v", err)
+			return false, itemFiles, errors.WithStack(err)
+		}
+		if action == nil {
+			goto backup
+		}
+		switch action.Type {
+		case resourcepolicies.Drop, resourcepolicies.Skip:
+			// TODO add a tracker.
+			log.Infof("Skip backing up item %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
+			return false, itemFiles, nil
+		case resourcepolicies.Keep:
+			log.Infof("Keep backing up item %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
+		default:
+			// other action do nothing
+		}
+	}
+backup:
 	if metadata.GetDeletionTimestamp() != nil {
 		log.Info("Skipping item because it's being deleted.")
 		return false, itemFiles, nil
@@ -698,6 +717,13 @@ func (ib *itemBackupper) getMatchAction(obj runtime.Unstructured, groupResource 
 	}
 
 	return nil, nil
+}
+
+func (ib *itemBackupper) getMatchGenericAction(obj runtime.Unstructured) (*resourcepolicies.Action, error) {
+	if ib.backupRequest.ResPolicies == nil {
+		return nil, nil
+	}
+	return ib.backupRequest.ResPolicies.GetMatchGenericAction(obj)
 }
 
 // trackSkippedPV tracks the skipped PV based on the object and the given approach and reason

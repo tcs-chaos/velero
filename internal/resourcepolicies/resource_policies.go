@@ -19,6 +19,9 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 )
@@ -34,6 +37,12 @@ const (
 	FSBackup VolumeActionType = "fs-backup"
 	// snapshot action can have 3 different meaning based on velero configuration and backup spec - cloud provider based snapshots, local csi snapshots and datamover snapshots
 	Snapshot VolumeActionType = "snapshot"
+
+	// GenericAction Type
+	// Keep action implies that the resource item would be kept in default backup operation
+	Keep VolumeActionType = "keep"
+	// Drop action implies that the resource item would be dropped in default backup operation
+	Drop VolumeActionType = "drop"
 )
 
 // Action defined as one action for a specific way of backup
@@ -57,12 +66,14 @@ type ResourcePolicies struct {
 	VolumePolicies []VolumePolicy `yaml:"volumePolicies"`
 	// we may support other resource policies in the future, and they could be added separately
 	// OtherResourcePolicies []OtherResourcePolicy
+	GenericPolicies GenericPolicyList `yaml:"genericPolicies"`
 }
 
 type Policies struct {
 	version        string
 	volumePolicies []volPolicy
 	// OtherPolicies
+	GenericPolicies GenericPolicyList
 }
 
 func unmarshalResourcePolicies(yamlData *string) (*ResourcePolicies, error) {
@@ -91,10 +102,13 @@ func (p *Policies) BuildPolicy(resPolicies *ResourcePolicies) error {
 		volP.conditions = append(volP.conditions, &nfsCondition{nfs: con.NFS})
 		volP.conditions = append(volP.conditions, &csiCondition{csi: con.CSI})
 		volP.conditions = append(volP.conditions, &volumeTypeCondition{volumeTypes: con.VolumeTypes})
+
+		volP.conditions = append(volP.conditions, &con.MatchExpressions)
 		p.volumePolicies = append(p.volumePolicies, volP)
 	}
 
 	// Other resource policies
+	p.GenericPolicies = resPolicies.GenericPolicies
 
 	p.version = resPolicies.Version
 	return nil
@@ -119,6 +133,13 @@ func (p *Policies) match(res *structuredVolume) *Action {
 
 func (p *Policies) GetMatchAction(res interface{}) (*Action, error) {
 	volume := &structuredVolume{}
+
+	unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(res)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	volume.obj = unstructured.Unstructured{Object: unstructuredMap}
+
 	switch obj := res.(type) {
 	case *v1.PersistentVolume:
 		volume.parsePV(obj)
@@ -128,6 +149,10 @@ func (p *Policies) GetMatchAction(res interface{}) (*Action, error) {
 		return nil, errors.New("failed to convert object")
 	}
 	return p.match(volume), nil
+}
+
+func (p *Policies) GetMatchGenericAction(res interface{}) (*Action, error) {
+	return p.GenericPolicies.Match(res)
 }
 
 func (p *Policies) Validate() error {

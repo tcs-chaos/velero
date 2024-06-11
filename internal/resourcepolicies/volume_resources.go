@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 	corev1api "k8s.io/api/core/v1"
@@ -48,6 +50,8 @@ type structuredVolume struct {
 	nfs          *nFSVolumeSource
 	csi          *csiVolumeSource
 	volumeType   SupportedVolume
+
+	obj unstructured.Unstructured
 }
 
 func (s *structuredVolume) parsePV(pv *corev1api.PersistentVolume) {
@@ -161,6 +165,23 @@ func (c *csiCondition) match(v *structuredVolume) bool {
 	}
 
 	return c.csi.Driver == v.csi.Driver
+}
+
+type matchExpressionConditionList []Requirement
+
+func (m matchExpressionConditionList) validate() error { return nil }
+
+func (m matchExpressionConditionList) match(v *structuredVolume) bool {
+	for _, r := range m {
+		match, err := r.Matches(v.obj)
+		if err != nil {
+			return false
+		}
+		if !match {
+			return false
+		}
+	}
+	return true
 }
 
 // parseCapacity parse string into capacity format
