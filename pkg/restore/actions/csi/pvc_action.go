@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	snapshotv1api "github.com/kubernetes-csi/external-snapshotter/client/v7/apis/volumesnapshot/v1"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	corev1api "k8s.io/api/core/v1"
@@ -32,6 +31,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	snapshotv1api "github.com/kubernetes-csi/external-snapshotter/client/v7/apis/volumesnapshot/v1"
 
 	velerov1api "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	velerov2alpha1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v2alpha1"
@@ -157,7 +158,7 @@ func (p *pvcRestoreItemAction) Execute(
 			AnnBoundByController,
 			AnnStorageProvisioner,
 			AnnBetaStorageProvisioner,
-			AnnSelectedNode,
+			//AnnSelectedNode, //TODO remove it ??
 			velerov1api.VolumeSnapshotLabel,
 			velerov1api.DataUploadNameAnnotation,
 		},
