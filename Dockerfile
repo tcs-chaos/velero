@@ -40,6 +40,7 @@ COPY . /go/src/github.com/vmware-tanzu/velero
 
 RUN mkdir -p /output/usr/bin && \
     export GOARM=$( echo "${GOARM}" | cut -c2-) && \
+    export GOFLAGS=-mod=vendor && \
     go build -o /output/${BIN} \
     -ldflags "${LDFLAGS}" ${PKG}/cmd/${BIN} && \
     go build -o /output/velero-helper \
@@ -62,7 +63,7 @@ ENV CGO_ENABLED=0 \
     GOARCH=${TARGETARCH} \
     GOARM=${TARGETVARIANT}
 
-COPY . /go/src/github.com/vmware-tanzu/velero
+COPY hack /go/src/github.com/vmware-tanzu/velero/hack
 
 RUN mkdir -p /output/usr/bin && \
     export GOARM=$(echo "${GOARM}" | cut -c2-) && \
