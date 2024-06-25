@@ -21,6 +21,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
@@ -151,8 +152,8 @@ func (p *Policies) GetMatchAction(res interface{}) (*Action, error) {
 	return p.match(volume), nil
 }
 
-func (p *Policies) GetMatchGenericAction(res interface{}) (*Action, error) {
-	return p.GenericPolicies.Match(res)
+func (p *Policies) GetMatchGenericAction(obj runtime.Unstructured, resource schema.GroupResource) (*Action, error) {
+	return p.GenericPolicies.Match(obj, resource)
 }
 
 func (p *Policies) Validate() error {

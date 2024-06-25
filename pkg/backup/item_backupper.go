@@ -155,7 +155,7 @@ func (ib *itemBackupper) backupItemInternal(logger logrus.FieldLogger, obj runti
 			return false, itemFiles, nil
 		}
 
-		action, err := ib.getMatchGenericAction(obj)
+		action, err := ib.getMatchGenericAction(obj, groupResource)
 		if err != nil {
 			log.Errorf("Error getting match generic action: %v", err)
 			return false, itemFiles, errors.WithStack(err)
@@ -719,11 +719,11 @@ func (ib *itemBackupper) getMatchAction(obj runtime.Unstructured, groupResource 
 	return nil, nil
 }
 
-func (ib *itemBackupper) getMatchGenericAction(obj runtime.Unstructured) (*resourcepolicies.Action, error) {
+func (ib *itemBackupper) getMatchGenericAction(obj runtime.Unstructured, resource schema.GroupResource) (*resourcepolicies.Action, error) {
 	if ib.backupRequest.ResPolicies == nil {
 		return nil, nil
 	}
-	return ib.backupRequest.ResPolicies.GetMatchGenericAction(obj)
+	return ib.backupRequest.ResPolicies.GetMatchGenericAction(obj, resource)
 }
 
 // trackSkippedPV tracks the skipped PV based on the object and the given approach and reason
