@@ -105,6 +105,21 @@ func (e *genericRestoreExposer) Expose(ctx context.Context, ownerObject corev1.O
 		return errors.Wrap(err, "error to create restore pvc")
 	}
 
+retry:
+	select {
+	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
+		return errors.New("context is done")
+	}
+	_, err = e.kubeClient.CoreV1().Pods(restorePod.Namespace).Get(ctx, restorePod.Name, metav1.GetOptions{})
+	if err != nil && apierrors.IsNotFound(err) {
+		goto retry
+	}
+	_, err = e.kubeClient.CoreV1().PersistentVolumeClaims(restorePVC.Namespace).Get(ctx, restorePVC.Name, metav1.GetOptions{})
+	if err != nil && apierrors.IsNotFound(err) {
+		goto retry
+	}
+
 	curLog.WithField("pvc name", restorePVC.Name).Info("Restore PVC is created")
 
 	defer func() {
@@ -306,6 +321,11 @@ func (e *genericRestoreExposer) createRestorePod(ctx context.Context, ownerObjec
 	var gracePeriod int64 = 0
 	volumeMounts, volumeDevices := kube.MakePodPVCAttachment(volumeName, targetPVC.Spec.VolumeMode)
 
+	node, err := e.kubeClient.CoreV1().Nodes().Get(ctx, selectedNode, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      restorePodName,
@@ -342,7 +362,7 @@ func (e *genericRestoreExposer) createRestorePod(ctx context.Context, ownerObjec
 					},
 				},
 			}},
-			NodeName: selectedNode,
+			NodeSelector: node.Labels,
 		},
 	}
 
