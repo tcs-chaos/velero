@@ -448,7 +448,7 @@ func TestDataDownloadReconcile(t *testing.T) {
 			if test.expectedStatusMsg != "" {
 				assert.Contains(t, err.Error(), test.expectedStatusMsg)
 			} else {
-				require.Nil(t, err)
+				require.NoError(t, err)
 			}
 
 			require.NotNil(t, actualResult)
@@ -476,7 +476,7 @@ func TestDataDownloadReconcile(t *testing.T) {
 				if controllerutil.ContainsFinalizer(test.dd, DataUploadDownloadFinalizer) {
 					assert.True(t, true, apierrors.IsNotFound(err))
 				} else {
-					require.Nil(t, err)
+					require.NoError(t, err)
 				}
 			} else {
 				assert.True(t, true, apierrors.IsNotFound(err))
@@ -504,11 +504,11 @@ func TestOnDataDownloadFailed(t *testing.T) {
 		if getErr {
 			assert.Error(t, r.client.Get(ctx, types.NamespacedName{Name: ddName, Namespace: namespace}, updatedDD))
 			assert.NotEqual(t, velerov2alpha1api.DataDownloadPhaseFailed, updatedDD.Status.Phase)
-			assert.Equal(t, updatedDD.Status.StartTimestamp.IsZero(), true)
+			assert.True(t, updatedDD.Status.StartTimestamp.IsZero())
 		} else {
 			assert.NoError(t, r.client.Get(ctx, types.NamespacedName{Name: ddName, Namespace: namespace}, updatedDD))
 			assert.Equal(t, velerov2alpha1api.DataDownloadPhaseFailed, updatedDD.Status.Phase)
-			assert.Equal(t, updatedDD.Status.StartTimestamp.IsZero(), true)
+			assert.True(t, updatedDD.Status.StartTimestamp.IsZero())
 		}
 	}
 }
@@ -530,12 +530,12 @@ func TestOnDataDownloadCancelled(t *testing.T) {
 		if getErr {
 			assert.Error(t, r.client.Get(ctx, types.NamespacedName{Name: ddName, Namespace: namespace}, updatedDD))
 			assert.NotEqual(t, velerov2alpha1api.DataDownloadPhaseFailed, updatedDD.Status.Phase)
-			assert.Equal(t, updatedDD.Status.StartTimestamp.IsZero(), true)
+			assert.True(t, updatedDD.Status.StartTimestamp.IsZero())
 		} else {
 			assert.NoError(t, r.client.Get(ctx, types.NamespacedName{Name: ddName, Namespace: namespace}, updatedDD))
 			assert.Equal(t, velerov2alpha1api.DataDownloadPhaseCanceled, updatedDD.Status.Phase)
-			assert.Equal(t, updatedDD.Status.StartTimestamp.IsZero(), false)
-			assert.Equal(t, updatedDD.Status.CompletionTimestamp.IsZero(), false)
+			assert.False(t, updatedDD.Status.StartTimestamp.IsZero())
+			assert.False(t, updatedDD.Status.CompletionTimestamp.IsZero())
 		}
 	}
 }
@@ -582,11 +582,11 @@ func TestOnDataDownloadCompleted(t *testing.T) {
 			if test.isGetErr {
 				assert.Error(t, r.client.Get(ctx, types.NamespacedName{Name: ddName, Namespace: namespace}, updatedDD))
 				assert.Equal(t, velerov2alpha1api.DataDownloadPhase(""), updatedDD.Status.Phase)
-				assert.Equal(t, updatedDD.Status.CompletionTimestamp.IsZero(), true)
+				assert.True(t, updatedDD.Status.CompletionTimestamp.IsZero())
 			} else {
 				assert.NoError(t, r.client.Get(ctx, types.NamespacedName{Name: ddName, Namespace: namespace}, updatedDD))
 				assert.Equal(t, velerov2alpha1api.DataDownloadPhaseCompleted, updatedDD.Status.Phase)
-				assert.Equal(t, updatedDD.Status.CompletionTimestamp.IsZero(), false)
+				assert.False(t, updatedDD.Status.CompletionTimestamp.IsZero())
 			}
 		})
 	}

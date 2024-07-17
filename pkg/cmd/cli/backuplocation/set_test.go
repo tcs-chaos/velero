@@ -66,7 +66,7 @@ func TestNewSetCommand(t *testing.T) {
 	args := []string{backupName}
 	o.Complete(args, f)
 	e := o.Validate(c, args, f)
-	assert.Nil(t, e)
+	assert.NoError(t, e)
 
 	e = o.Run(c, f)
 	assert.Contains(t, e.Error(), fmt.Sprintf("%s: no such file or directory", cacert))
@@ -75,7 +75,7 @@ func TestNewSetCommand(t *testing.T) {
 	assert.Equal(t, backupName, o.Name)
 	assert.Equal(t, cacert, o.CACertFile)
 	assert.Equal(t, defaultBackupStorageLocation, boolptr.IsSetToTrue(o.DefaultBackupStorageLocation.Value))
-	assert.Equal(t, true, reflect.DeepEqual(credential, o.Credential))
+	assert.True(t, reflect.DeepEqual(credential, o.Credential))
 
 	assert.Contains(t, e.Error(), fmt.Sprintf("%s: no such file or directory", cacert))
 }

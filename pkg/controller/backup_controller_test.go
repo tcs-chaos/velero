@@ -85,6 +85,7 @@ func (b *fakeBackupper) FinalizeBackup(
 	outBackupFile io.Writer,
 	backupItemActionResolver framework.BackupItemActionResolverV2,
 	asyncBIAOperations []*itemoperation.BackupOperation,
+	backupStore persistence.BackupStore,
 ) error {
 	args := b.Called(logger, backup, inBackupFile, outBackupFile, backupItemActionResolver, asyncBIAOperations)
 	return args.Error(0)
@@ -139,7 +140,7 @@ func TestProcessBackupNonProcessedItems(t *testing.T) {
 			}
 			actualResult, err := c.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: test.backup.Namespace, Name: test.backup.Name}})
 			assert.Equal(t, actualResult, ctrl.Result{})
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
 			// Any backup that would actually proceed to validation will cause a segfault because this
 			// test hasn't set up the necessary controller dependencies for validation/etc. So the lack
@@ -190,15 +191,9 @@ func TestProcessBackupValidationFailures(t *testing.T) {
 		},
 		{
 			name:           "use old filter parameters and new filter parameters together",
-			backup:         defaultBackup().IncludeClusterResources(true).IncludedNamespaceScopedResources("Deployment").IncludedNamespaces("foo").Result(),
+			backup:         defaultBackup().IncludeClusterResources(true).IncludedNamespaceScopedResources("Deployment").IncludedNamespaces("default").Result(),
 			backupLocation: defaultBackupLocation,
 			expectedErrs:   []string{"include-resources, exclude-resources and include-cluster-resources are old filter parameters.\ninclude-cluster-scoped-resources, exclude-cluster-scoped-resources, include-namespace-scoped-resources and exclude-namespace-scoped-resources are new filter parameters.\nThey cannot be used together"},
-		},
-		{
-			name:           "nonexisting namespace",
-			backup:         defaultBackup().IncludedNamespaces("non-existing").Result(),
-			backupLocation: defaultBackupLocation,
-			expectedErrs:   []string{"Invalid included/excluded namespace lists: namespaces \"non-existing\" not found"},
 		},
 	}
 
@@ -214,11 +209,10 @@ func TestProcessBackupValidationFailures(t *testing.T) {
 			require.NoError(t, err)
 
 			var fakeClient kbclient.Client
-			namespace := builder.ForNamespace("foo").Result()
 			if test.backupLocation != nil {
-				fakeClient = velerotest.NewFakeControllerRuntimeClient(t, test.backupLocation, namespace)
+				fakeClient = velerotest.NewFakeControllerRuntimeClient(t, test.backupLocation)
 			} else {
-				fakeClient = velerotest.NewFakeControllerRuntimeClient(t, namespace)
+				fakeClient = velerotest.NewFakeControllerRuntimeClient(t)
 			}
 
 			c := &backupReconciler{
@@ -236,7 +230,7 @@ func TestProcessBackupValidationFailures(t *testing.T) {
 
 			actualResult, err := c.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: test.backup.Namespace, Name: test.backup.Name}})
 			assert.Equal(t, actualResult, ctrl.Result{})
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			res := &velerov1api.Backup{}
 			err = c.kbClient.Get(context.Background(), kbclient.ObjectKey{Namespace: test.backup.Namespace, Name: test.backup.Name}, res)
 			require.NoError(t, err)
@@ -1384,7 +1378,7 @@ func TestProcessBackupCompletions(t *testing.T) {
 
 			actualResult, err := c.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: test.backup.Namespace, Name: test.backup.Name}})
 			assert.Equal(t, actualResult, ctrl.Result{})
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
 			// Disable CSI feature to not impact other test cases.
 			if test.enableCSI {
@@ -1572,43 +1566,6 @@ func TestValidateAndGetSnapshotLocations(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestValidateNamespaceIncludesExcludes(t *testing.T) {
-	namespace := builder.ForNamespace("default").Result()
-	reconciler := &backupReconciler{
-		kbClient: velerotest.NewFakeControllerRuntimeClient(t, namespace),
-	}
-
-	// empty string as includedNamespaces
-	includedNamespaces := []string{""}
-	excludedNamespaces := []string{"test"}
-	errs := reconciler.validateNamespaceIncludesExcludes(includedNamespaces, excludedNamespaces)
-	assert.Empty(t, errs)
-
-	// "*" as includedNamespaces
-	includedNamespaces = []string{"*"}
-	excludedNamespaces = []string{"test"}
-	errs = reconciler.validateNamespaceIncludesExcludes(includedNamespaces, excludedNamespaces)
-	assert.Empty(t, errs)
-
-	// invalid namespaces
-	includedNamespaces = []string{"1@#"}
-	excludedNamespaces = []string{"2@#"}
-	errs = reconciler.validateNamespaceIncludesExcludes(includedNamespaces, excludedNamespaces)
-	assert.Len(t, errs, 2)
-
-	// not exist namespaces
-	includedNamespaces = []string{"non-existing-namespace"}
-	excludedNamespaces = []string{}
-	errs = reconciler.validateNamespaceIncludesExcludes(includedNamespaces, excludedNamespaces)
-	assert.Len(t, errs, 1)
-
-	// valid namespaces
-	includedNamespaces = []string{"default"}
-	excludedNamespaces = []string{}
-	errs = reconciler.validateNamespaceIncludesExcludes(includedNamespaces, excludedNamespaces)
-	assert.Empty(t, errs)
 }
 
 // Test_getLastSuccessBySchedule verifies that the getLastSuccessBySchedule helper function correctly returns

@@ -129,7 +129,7 @@ func TestCreateOptions_BuildBackupFromSchedule(t *testing.T) {
 
 func TestCreateOptions_OrderedResources(t *testing.T) {
 	_, err := ParseOrderedResources("pods= ns1/p1; ns1/p2; persistentvolumeclaims=ns2/pvc1, ns2/pvc2")
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 
 	orderedResources, err := ParseOrderedResources("pods= ns1/p1,ns1/p2 ; persistentvolumeclaims=ns2/pvc1,ns2/pvc2")
 	assert.NoError(t, err)
@@ -247,7 +247,7 @@ func TestCreateCommand(t *testing.T) {
 		require.Equal(t, excludeClusterScopedResources, o.ExcludeClusterScopedResources.String())
 		require.Equal(t, includeNamespaceScopedResources, o.IncludeNamespaceScopedResources.String())
 		require.Equal(t, excludeNamespaceScopedResources, o.ExcludeNamespaceScopedResources.String())
-		require.Equal(t, true, test.CompareSlice(strings.Split(labels, ","), strings.Split(o.Labels.String(), ",")))
+		require.True(t, test.CompareSlice(strings.Split(labels, ","), strings.Split(o.Labels.String(), ",")))
 		require.Equal(t, storageLocation, o.StorageLocation)
 		require.Equal(t, snapshotLocations, strings.Split(o.SnapshotLocations[0], ",")[0])
 		require.Equal(t, selector, o.Selector.String())
@@ -265,7 +265,7 @@ func TestCreateCommand(t *testing.T) {
 
 		// verify oldAndNewFilterParametersUsedTogether
 		mix := o.oldAndNewFilterParametersUsedTogether()
-		require.Equal(t, true, mix)
+		require.True(t, mix)
 	})
 
 	t.Run("create a backup create command with specific storage-location setting", func(t *testing.T) {
