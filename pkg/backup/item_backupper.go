@@ -130,6 +130,26 @@ func (ib *itemBackupper) backupItemInternal(logger logrus.FieldLogger, obj runti
 			ib.trackSkippedPV(obj, groupResource, "", fmt.Sprintf("item has label %s=true", velerov1api.ExcludeFromBackupLabel), log)
 			return false, itemFiles, nil
 		}
+		// if this is persistentvolumeclaims, using volume policy to determine whether to backup or not.
+		if groupResource == kuberesource.PersistentVolumeClaims {
+			action, err := ib.getMatchAction(obj, groupResource, csiBIAPluginName)
+			if err != nil {
+				log.Errorf("Error getting match action: %v", err)
+				return false, itemFiles, errors.WithStack(err)
+			}
+			if action != nil && action.Type == resourcepolicies.Drop {
+				log.Infof("Skip backing up item %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
+				return false, itemFiles, nil
+			}
+			if action != nil && action.Type == resourcepolicies.Skip {
+				log.Infof("Skip backing up item %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
+				return false, itemFiles, nil
+			}
+			if action != nil {
+				goto backup
+			}
+		}
+
 		// NOTE: we have to re-check namespace & resource includes/excludes because it's possible that
 		// backupItem can be invoked by a custom action.
 		if namespace != "" && !ib.backupRequest.NamespaceIncludesExcludes.ShouldInclude(namespace) {
