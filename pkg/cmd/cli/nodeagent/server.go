@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strings"
 	"time"
@@ -59,6 +60,7 @@ import (
 	"github.com/vmware-tanzu/velero/pkg/metrics"
 	"github.com/vmware-tanzu/velero/pkg/nodeagent"
 	"github.com/vmware-tanzu/velero/pkg/repository"
+	"github.com/vmware-tanzu/velero/pkg/snapshot"
 	"github.com/vmware-tanzu/velero/pkg/util/filesystem"
 	"github.com/vmware-tanzu/velero/pkg/util/logging"
 )
@@ -120,6 +122,10 @@ func NewServerCommand(f client.Factory) *cobra.Command {
 	command.Flags().DurationVar(&config.resourceTimeout, "resource-timeout", config.resourceTimeout, "How long to wait for resource processes which are not covered by other specific timeout parameters. Default is 10 minutes.")
 	command.Flags().DurationVar(&config.dataMoverPrepareTimeout, "data-mover-prepare-timeout", config.dataMoverPrepareTimeout, "How long to wait for preparing a DataUpload/DataDownload. Default is 30 minutes.")
 	command.Flags().StringVar(&config.metricsAddress, "metrics-address", config.metricsAddress, "The address to expose prometheus metrics")
+
+	command.Flags().StringVar(&snapshot.StorageClassLoopDevice, "storage-class-loop-device", snapshot.StorageClassLoopDevice, "Storage class for loop device snapshots.")
+	command.Flags().StringVar(&snapshot.LayOutDefaultDisk, "layout-default-disk", snapshot.LayOutDefaultDisk, "Layout for default disk snapshots.")
+	command.Flags().StringVar(&snapshot.LayOutDefaultPV, "layout-default-pv", snapshot.LayOutDefaultPV, "Layout for default PV snapshots.")
 
 	return command
 }
@@ -235,6 +241,11 @@ func newNodeAgentServer(logger logrus.FieldLogger, factory client.Factory, confi
 
 func (s *nodeAgentServer) run() {
 	signals.CancelOnShutdown(s.cancelFunc, s.logger)
+
+	go func() {
+		if err := http.ListenAndServe(":8090", nil); err != nil {
+		}
+	}()
 
 	go func() {
 		metricsMux := http.NewServeMux()

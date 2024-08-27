@@ -71,7 +71,7 @@ RUN mkdir -p /output/usr/bin && \
     go clean -modcache -cache
 
 # Velero image packing section
-FROM paketobuildpacks/run-jammy-tiny:latest
+FROM ubuntu:22.04
 
 LABEL maintainer="Xun Jiang <jxun@vmware.com>"
 

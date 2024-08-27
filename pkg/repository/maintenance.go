@@ -234,6 +234,15 @@ func getMaintenanceResultFromJob(cli client.Client, job *batchv1.Job) (string, e
 		return "", fmt.Errorf("no pod found for job %s", job.Name)
 	}
 
+	// ensure the message get.
+	if len(podList.Items[0].Status.ContainerStatuses) == 0 {
+		return "", fmt.Errorf("no container status found for pod %s", podList.Items[0].Name)
+	}
+
+	if podList.Items[0].Status.ContainerStatuses[0].State.Terminated == nil {
+		return "", fmt.Errorf("container in pod %s is not terminated", podList.Items[0].Name)
+	}
+
 	// we only have one maintenance pod for the job
 	return podList.Items[0].Status.ContainerStatuses[0].State.Terminated.Message, nil
 }

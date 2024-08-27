@@ -40,6 +40,7 @@ import (
 	"github.com/vmware-tanzu/velero/pkg/metrics"
 	"github.com/vmware-tanzu/velero/pkg/podvolume"
 	"github.com/vmware-tanzu/velero/pkg/repository"
+	"github.com/vmware-tanzu/velero/pkg/snapshot"
 	"github.com/vmware-tanzu/velero/pkg/uploader"
 	"github.com/vmware-tanzu/velero/pkg/util/filesystem"
 )
@@ -123,16 +124,6 @@ func (r *PodVolumeBackupReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		OnProgress:  r.OnDataPathProgress,
 	}
 
-	fsBackup, err := r.dataPathMgr.CreateFileSystemBR(pvb.Name, pVBRRequestor, ctx, r.Client, pvb.Namespace, callbacks, log)
-
-	if err != nil {
-		if err == datapath.ConcurrentLimitExceed {
-			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
-		} else {
-			return r.errorOut(ctx, &pvb, err, "error to create data path", log)
-		}
-	}
-
 	r.metrics.RegisterPodVolumeBackupEnqueue(r.nodeName)
 
 	// Update status to InProgress.
@@ -155,6 +146,23 @@ func (r *PodVolumeBackupReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	path, err := exposer.GetPodVolumeHostPath(ctx, &pod, pvb.Spec.Volume, r.Client, r.fileSystem, log)
 	if err != nil {
 		return r.errorOut(ctx, &pvb, err, "error exposing host path for pod volume", log)
+	}
+
+	// Create a snapshot of the volume.
+	snapshots := snapshot.NewSnapshotWithName(r.Client, &pod, pvb.Spec.Volume, log)
+	if path.ByPath, err = snapshots.CreateSnapshot(); err != nil {
+		return r.errorOut(ctx, &pvb, err, "error creating snapshot for pod volume", log)
+	}
+	callbacks.Defer(snapshots.DeleteSnapshot)
+
+	// Create a file system backup instance.
+	fsBackup, err := r.dataPathMgr.CreateFileSystemBR(pvb.Name, pVBRRequestor, ctx, r.Client, pvb.Namespace, callbacks, log)
+	if err != nil {
+		if err == datapath.ConcurrentLimitExceed {
+			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
+		} else {
+			return r.errorOut(ctx, &pvb, err, "error to create data path", log)
+		}
 	}
 
 	log.WithField("path", path.ByPath).Debugf("Found host path")

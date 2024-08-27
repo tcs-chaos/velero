@@ -19,6 +19,8 @@ package datapath
 import (
 	"context"
 
+	"k8s.io/klog/v2"
+
 	"github.com/vmware-tanzu/velero/pkg/uploader"
 )
 
@@ -46,6 +48,31 @@ type Callbacks struct {
 	OnFailed    func(context.Context, string, string, error)
 	OnCancelled func(context.Context, string, string)
 	OnProgress  func(context.Context, string, string, *uploader.Progress)
+}
+
+func (c *Callbacks) Defer(fn func() error) {
+	Copy := *c
+	if c.OnCompleted != nil {
+		klog.Infof("OnCompleted is not nil")
+		c.OnCompleted = func(ctx context.Context, id, name string, result Result) {
+			defer fn()
+			Copy.OnCompleted(ctx, id, name, result)
+		}
+	}
+
+	if c.OnFailed != nil {
+		c.OnFailed = func(ctx context.Context, id, name string, err error) {
+			defer fn()
+			Copy.OnFailed(ctx, id, name, err)
+		}
+	}
+
+	if c.OnCancelled != nil {
+		c.OnCancelled = func(ctx context.Context, id, name string) {
+			defer fn()
+			Copy.OnCancelled(ctx, id, name)
+		}
+	}
 }
 
 // AccessPoint represents an access point that has been exposed to a data path instance
