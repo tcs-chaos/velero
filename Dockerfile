@@ -79,5 +79,5 @@ COPY --from=velero-builder /output /
 
 COPY --from=restic-builder /output /
 
-USER cnb:cnb
+USER root:root
 
