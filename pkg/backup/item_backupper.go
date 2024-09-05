@@ -131,24 +131,25 @@ func (ib *itemBackupper) backupItemInternal(logger logrus.FieldLogger, obj runti
 			return false, itemFiles, nil
 		}
 		// if this is persistentvolumeclaims, using volume policy to determine whether to backup or not.
-		if groupResource == kuberesource.PersistentVolumeClaims {
-			action, err := ib.getMatchAction(obj, groupResource, csiBIAPluginName)
-			if err != nil {
-				log.Errorf("Error getting match action: %v", err)
-				return false, itemFiles, errors.WithStack(err)
-			}
-			if action != nil && action.Type == resourcepolicies.Drop {
-				log.Infof("Skip backing up item %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
-				return false, itemFiles, nil
-			}
-			if action != nil && action.Type == resourcepolicies.Skip {
-				log.Infof("Skip backing up item %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
-				return false, itemFiles, nil
-			}
-			if action != nil {
-				goto backup
-			}
-		}
+		//if groupResource == kuberesource.PersistentVolumeClaims {
+		//	log.Infof("working on volume policy %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
+		//	action, err := ib.getMatchAction(obj, groupResource, csiBIAPluginName)
+		//	if err != nil {
+		//		log.Errorf("Error getting match action: %v", err)
+		//		return false, itemFiles, errors.WithStack(err)
+		//	}
+		//	if action != nil && action.Type == resourcepolicies.Drop {
+		//		log.Infof("Skip backing up item %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
+		//		return false, itemFiles, nil
+		//	}
+		//	if action != nil && action.Type == resourcepolicies.Skip {
+		//		log.Infof("Skip backing up item %s/%s of resource %s for the matched resource policies", namespace, name, groupResource)
+		//		return false, itemFiles, nil
+		//	}
+		//	if action != nil {
+		//		goto backup
+		//	}
+		//}
 
 		// NOTE: we have to re-check namespace & resource includes/excludes because it's possible that
 		// backupItem can be invoked by a custom action.
@@ -717,6 +718,8 @@ func (ib *itemBackupper) takePVSnapshot(obj runtime.Unstructured, log logrus.Fie
 }
 
 func (ib *itemBackupper) getMatchAction(obj runtime.Unstructured, groupResource schema.GroupResource, backupItemActionName string) (*resourcepolicies.Action, error) {
+	// hack: since we check match according to generic policy above, so do not check for PVC here
+	return nil, nil
 	if ib.backupRequest.ResPolicies != nil && groupResource == kuberesource.PersistentVolumeClaims && (backupItemActionName == csiBIAPluginName || backupItemActionName == vsphereBIAPluginName) {
 		pvc := corev1api.PersistentVolumeClaim{}
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &pvc); err != nil {

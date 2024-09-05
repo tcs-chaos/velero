@@ -66,6 +66,14 @@ func (v *volumeHelperImpl) ShouldPerformSnapshot(obj runtime.Unstructured, group
 			return false, err
 		}
 
+		// hack: if the volumename of pvc is empty, then skip the snapshot action,
+		// and the logic in brms apiserver will ensure there will be no such pv in volume policy configmap
+		if pvc.Spec.VolumeName == "" {
+			v.logger.Infof("Skip snapshot action for pvc %s due to PVC has no volumeName",
+				pvc.Namespace+"/"+pvc.Name)
+			return false, nil
+		}
+
 		pv, err = kubeutil.GetPVForPVC(pvc, v.client)
 		if err != nil {
 			v.logger.WithError(err).Errorf("fail to get PV for PVC %s", pvc.Namespace+"/"+pvc.Name)
@@ -151,6 +159,15 @@ func (v volumeHelperImpl) ShouldPerformFSBackup(volume corev1api.Volume, pod cor
 				v.logger.WithError(err).Errorf("fail to get PVC for pod %s", pod.Namespace+"/"+pod.Name)
 				return false, err
 			}
+
+			// hack: if the volumename of pvc is empty, then skip the fs-backup action,
+			// and the logic in brms apiserver will ensure there will be no such pv in volume policy configmap
+			if pvc.Spec.VolumeName == "" {
+				v.logger.Infof("Skip fs-backup action for volume %s of pod %s due to PVC %s has no volumeName",
+					volume.Name, pod.Namespace+"/"+pod.Name, pvc.Namespace+"/"+pvc.Name)
+				return false, nil
+			}
+
 			resource, err = kubeutil.GetPVForPVC(pvc, v.client)
 			if err != nil {
 				v.logger.WithError(err).Errorf("fail to get PV for PVC %s", pvc.Namespace+"/"+pvc.Name)
