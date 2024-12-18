@@ -8,8 +8,8 @@ import (
 
 // /host/disk/{pv path}/
 // /host/disk/{pv path}/{pv.name}.img
-// /host/disk/{pv path}/{pv.name}/velero/{snapshot.id}/snapshot.img
-// /host/disk/{pv path}/{pv.name}/velero/{snapshot.id}/snapshot
+// /host/disk/{pv path}/{pv.name}/velero/{pvdNamespacedName}/snapshot.img
+// /host/disk/{pv path}/{pv.name}/velero/{pvdNamespacedName}/snapshot
 
 func Disk(disk string) layoutDisk {
 	return defaultLayout().Disk(disk)

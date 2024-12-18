@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -13,8 +12,10 @@ import (
 )
 
 type Internal interface {
-	CreateSnapshot(volume *v1.PersistentVolume, uuid string) (mount string, err error)
-	DeleteSnapshot(volume *v1.PersistentVolume, uuid string) error
+	CreateSnapshot(volume *v1.PersistentVolume, pvdNamespacedName string,
+		log logrus.FieldLogger) (mount string, err error)
+	DeleteSnapshot(volume *v1.PersistentVolume, pvdNamespacedName string,
+		log logrus.FieldLogger) error
 }
 
 type Snapshot interface {
@@ -22,18 +23,19 @@ type Snapshot interface {
 	DeleteSnapshot() error
 }
 
-func NewSnapshotWithName(Client client.Client, pod *v1.Pod, volumeName string, log logrus.FieldLogger) Snapshot {
-	_, volume, _, err := kube.GetPodPVCVolume(context.Background(), log, pod, volumeName, Client)
+func NewSnapshotWithName(client client.Client, pod *v1.Pod, pvdNamespacedName, volumeName string,
+	log logrus.FieldLogger) Snapshot {
+	_, volume, _, err := kube.GetPodPVCVolume(context.Background(), log, pod, volumeName, client)
 	if err != nil {
 		return &ErrSnapshot{err: err}
 	}
-	return NewSnapshot(volume)
+	return NewSnapshot(pvdNamespacedName, volume, log)
 }
 
-func NewSnapshot(volume *v1.PersistentVolume) Snapshot {
+func NewSnapshot(pvdNamespacedName string, volume *v1.PersistentVolume, log logrus.FieldLogger) Snapshot {
 	switch volume.Spec.StorageClassName {
 	case StorageClassLoopDevice:
-		return NewLoopDevice(volume)
+		return NewLoopDevice(pvdNamespacedName, volume, log)
 	}
 	return &ErrSnapshot{err: fmt.Errorf("unsupported storage class %s", volume)}
 }
@@ -51,24 +53,26 @@ func (es *ErrSnapshot) DeleteSnapshot() error {
 }
 
 type LoopDevice struct {
-	UUID   string
-	Volume *v1.PersistentVolume
+	PvdNamespacedName string
+	Volume            *v1.PersistentVolume
 
+	log  logrus.FieldLogger
 	impl Internal
 }
 
-func NewLoopDevice(volume *v1.PersistentVolume) *LoopDevice {
+func NewLoopDevice(pvdNamespacedName string, volume *v1.PersistentVolume, log logrus.FieldLogger) *LoopDevice {
 	return &LoopDevice{
-		Volume: volume,
-		UUID:   uuid.New().String(),
-		impl:   &loopDevice{},
+		Volume:            volume,
+		PvdNamespacedName: pvdNamespacedName,
+		impl:              &loopDevice{},
+		log:               log,
 	}
 }
 
 func (ld *LoopDevice) CreateSnapshot() (mount string, err error) {
-	return ld.impl.CreateSnapshot(ld.Volume, ld.UUID)
+	return ld.impl.CreateSnapshot(ld.Volume, ld.PvdNamespacedName, ld.log)
 }
 
 func (ld *LoopDevice) DeleteSnapshot() error {
-	return ld.impl.DeleteSnapshot(ld.Volume, ld.UUID)
+	return ld.impl.DeleteSnapshot(ld.Volume, ld.PvdNamespacedName, ld.log)
 }

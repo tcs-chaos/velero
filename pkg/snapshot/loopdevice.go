@@ -5,39 +5,18 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
 )
 
 type loopDevice struct {
 }
 
-func (ld *loopDevice) CreateSnapshot(volume *v1.PersistentVolume, uuid string) (path string, err error) {
-	return createSnapshot(volume, uuid)
-}
-
-func (ld *loopDevice) DeleteSnapshot(volume *v1.PersistentVolume, uuid string) error {
-	return deleteSnapshot(volume, uuid)
-}
-
-func deleteSnapshot(volume *v1.PersistentVolume, uuid string) error {
-	pv := Disk("").PV(volume)
-	snapshot := pv.Snapshot(uuid)
-	klog.Infof("delete snapshot %s", snapshot.Path())
-	if err := Unmount(snapshot.MountPoint()); err != nil {
-		klog.Errorf("unmount %s failed: %v", snapshot.MountPoint(), err)
-		return errors.WithStack(err)
-	}
-	if err := os.RemoveAll(snapshot.Path()); err != nil {
-		klog.Errorf("remove %s failed: %v", snapshot.Path(), err)
-		return errors.WithStack(err)
-	}
-	return nil
-}
-
-func createSnapshot(volume *v1.PersistentVolume, uuid string) (path string, err error) {
+func (ld *loopDevice) CreateSnapshot(volume *v1.PersistentVolume, pvdNamespacedName string,
+	log logrus.FieldLogger) (path string, err error) {
 	pv := Disk("").PV(volume)
 	if err = EnsureDir(pv.Path()); err != nil {
 		return "", errors.WithStack(err)
@@ -45,24 +24,47 @@ func createSnapshot(volume *v1.PersistentVolume, uuid string) (path string, err 
 
 	// create snapshot image
 	var src, dst string
-	snapshot := pv.Snapshot(uuid)
+	snapshot := pv.Snapshot(pvdNamespacedName)
 	src, dst = pv.Image(), snapshot.Image()
 	if err = EnsureDir(snapshot.Path()); err != nil {
+		log.Errorf("ensure dir %s failed: %v", snapshot.Path(), err)
 		return "", errors.WithStack(err)
 	}
-	if err = ReFlink(src, dst); err != nil {
+	if err = ReFlink(src, dst, log); err != nil {
+		log.Errorf("reflink %s to %s failed: %v", src, dst, err)
 		return "", errors.WithStack(err)
 	}
 
-	// create mount path
+	// create a mount path
 	src, dst = snapshot.Image(), snapshot.MountPoint()
 	if err = EnsureDir(dst); err != nil {
+		log.Errorf("ensure dir %s failed: %v", snapshot.Path(), err)
 		return "", errors.WithStack(err)
 	}
-	if err = MountWithNoUUID(src, dst); err != nil {
+	if err = MountWithNoUUID(src, dst, log); err != nil {
 		return "", errors.WithStack(err)
 	}
 	return dst, nil
+}
+
+func (ld *loopDevice) DeleteSnapshot(volume *v1.PersistentVolume, pvdNamespacedName string,
+	log logrus.FieldLogger) error {
+	pv := Disk("").PV(volume)
+	snapshot := pv.Snapshot(pvdNamespacedName)
+	log.Infof("delete snapshot %s", snapshot.Path())
+	// we can get here even if the snapshot image is not mounted, so we need to umount it anyway.
+	// so that we can delete the snapshot image
+	if err := Unmount(snapshot.MountPoint(), log); err != nil {
+		log.Warnf("unmount %s failed: %v", snapshot.MountPoint(), err)
+	}
+	if err := os.RemoveAll(snapshot.Path()); err != nil {
+		log.Errorf("remove %s failed: %v", snapshot.Path(), err)
+		// if the path does not exist (we may meet this condition), RemoveAll returns nil (no error).
+		// os return error here
+		return errors.WithStack(err)
+	}
+	log.Infof("delete snapshot %s success", snapshot.Path())
+	return nil
 }
 
 func EnsureDir(dir string) error {
@@ -77,21 +79,21 @@ func EnsureDir(dir string) error {
 	return nil
 }
 
-func ReFlink(src, dst string, opts ...string) (err error) {
-	klog.V(4).Infof("reflink %s to %s", src, dst)
+func ReFlink(src, dst string, log logrus.FieldLogger, opts ...string) (err error) {
+	log.Infof("reflink %s to %s", src, dst)
 	if err = exec.Command("cp", append([]string{"--reflink=always", src, dst}, opts...)...).Run(); err != nil {
-		klog.V(4).Infof("reflink %s to %s failed: %v", src, dst, err)
+		log.Infof("reflink %s to %s failed: %v", src, dst, err)
 		return errors.Wrapf(err, "reflink %s to %s failed", src, dst)
 	}
 	return nil
 }
 
-func MountWithNoUUID(src, dst string) error {
-	return Mount(src, dst, "nouuid")
+func MountWithNoUUID(src, dst string, log logrus.FieldLogger) error {
+	return Mount(src, dst, log, "nouuid")
 }
 
-func Mount(src, dst string, options ...string) error {
-	klog.V(4).Infof("mount %s to %s", src, dst)
+func Mount(src, dst string, log logrus.FieldLogger, options ...string) error {
+	log.Infof("mount %s to %s", src, dst)
 
 	args := []string{src, dst}
 
@@ -100,15 +102,25 @@ func Mount(src, dst string, options ...string) error {
 		args = append(args, strings.Join(options, ","))
 	}
 
-	cmd := exec.Command("mount", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("mount failed: %v, output: %s", err, string(output))
+	const maxRetries = 10
+	const retryInterval = time.Second
+
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		cmd := exec.Command("mount", args...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			lastErr = fmt.Errorf("mount failed: %v, output: %s", err, string(output))
+			log.Errorf("attempt to mount %s to %s, this is round %d, err: %s", src, dst, i+1, lastErr)
+			time.Sleep(retryInterval)
+			continue
+		}
+		return nil
 	}
-	return nil
+	return lastErr
 }
 
-func Unmount(path string) error {
-	klog.V(4).Infof("umount %s", path)
+func Unmount(path string, log logrus.FieldLogger) error {
+	log.Infof("umount %s", path)
 	if err := exec.Command("umount", path).Run(); err != nil {
 		return errors.Wrapf(err, "umount %s failed", path)
 	}

@@ -124,6 +124,31 @@ func (r *PodVolumeBackupReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		OnProgress:  r.OnDataPathProgress,
 	}
 
+	var pod corev1.Pod
+	podNamespacedName := client.ObjectKey{
+		Namespace: pvb.Spec.Pod.Namespace,
+		Name:      pvb.Spec.Pod.Name,
+	}
+	if err := r.Client.Get(ctx, podNamespacedName, &pod); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Debug("Unable to find Pod ", podNamespacedName.String())
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, errors.Wrap(err, "getting Pod")
+	}
+	snapshots := snapshot.NewSnapshotWithName(r.Client, &pod, req.NamespacedName.String(), pvb.Spec.Volume, log)
+	callbacks.Defer(snapshots.DeleteSnapshot)
+
+	fsBackup, err := r.dataPathMgr.CreateFileSystemBR(pvb.Name, pVBRRequestor, ctx, r.Client, pvb.Namespace, callbacks, log)
+	if err != nil {
+		if err == datapath.ConcurrentLimitExceed {
+			log.Info("Concurrent limit exceeded, requeue")
+			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
+		} else {
+			return r.errorOut(ctx, &pvb, err, "error to create data path", log)
+		}
+	}
+
 	r.metrics.RegisterPodVolumeBackupEnqueue(r.nodeName)
 
 	// Update status to InProgress.
@@ -134,37 +159,17 @@ func (r *PodVolumeBackupReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return r.errorOut(ctx, &pvb, err, "error updating PodVolumeBackup status", log)
 	}
 
-	var pod corev1.Pod
-	podNamespacedName := client.ObjectKey{
-		Namespace: pvb.Spec.Pod.Namespace,
-		Name:      pvb.Spec.Pod.Name,
-	}
-	if err := r.Client.Get(ctx, podNamespacedName, &pod); err != nil {
-		return r.errorOut(ctx, &pvb, err, fmt.Sprintf("getting pod %s/%s", pvb.Spec.Pod.Namespace, pvb.Spec.Pod.Name), log)
-	}
-
 	path, err := exposer.GetPodVolumeHostPath(ctx, &pod, pvb.Spec.Volume, r.Client, r.fileSystem, log)
 	if err != nil {
 		return r.errorOut(ctx, &pvb, err, "error exposing host path for pod volume", log)
 	}
 
 	// Create a snapshot of the volume.
-	snapshots := snapshot.NewSnapshotWithName(r.Client, &pod, pvb.Spec.Volume, log)
+	log.Info("Start to create snapshot")
 	if path.ByPath, err = snapshots.CreateSnapshot(); err != nil {
 		return r.errorOut(ctx, &pvb, err, "error creating snapshot for pod volume", log)
 	}
-	callbacks.Defer(snapshots.DeleteSnapshot)
-
-	// Create a file system backup instance.
-	fsBackup, err := r.dataPathMgr.CreateFileSystemBR(pvb.Name, pVBRRequestor, ctx, r.Client, pvb.Namespace, callbacks, log)
-	if err != nil {
-		if err == datapath.ConcurrentLimitExceed {
-			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 5}, nil
-		} else {
-			return r.errorOut(ctx, &pvb, err, "error to create data path", log)
-		}
-	}
-
+	log.Infof("Successfully created snapshot, path: %s", path.ByPath)
 	log.WithField("path", path.ByPath).Debugf("Found host path")
 
 	if err := fsBackup.Init(ctx, &datapath.FSBRInitParam{
