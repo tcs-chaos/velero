@@ -126,6 +126,7 @@ func NewServerCommand(f client.Factory) *cobra.Command {
 	command.Flags().StringVar(&snapshot.StorageClassLoopDevice, "storage-class-loop-device", snapshot.StorageClassLoopDevice, "Storage class for loop device snapshots.")
 	command.Flags().StringVar(&snapshot.LayOutDefaultDisk, "layout-default-disk", snapshot.LayOutDefaultDisk, "Layout for default disk snapshots.")
 	command.Flags().StringVar(&snapshot.LayOutDefaultPV, "layout-default-pv", snapshot.LayOutDefaultPV, "Layout for default PV snapshots.")
+	command.Flags().StringVar(&snapshot.DiskSelector, "disk-selector", snapshot.DiskSelector, "Disk selector for snapshotting.")
 
 	return command
 }

@@ -17,7 +17,11 @@ type loopDevice struct {
 
 func (ld *loopDevice) CreateSnapshot(volume *v1.PersistentVolume, pvdNamespacedName string,
 	log logrus.FieldLogger) (path string, err error) {
-	pv := Disk("").PV(volume)
+	disk := ""
+	if volume.Spec.CSI.VolumeAttributes != nil {
+		disk = volume.Spec.CSI.VolumeAttributes[DiskSelector]
+	}
+	pv := Disk(disk).PV(volume)
 	if err = EnsureDir(pv.Path()); err != nil {
 		return "", errors.WithStack(err)
 	}
@@ -49,7 +53,11 @@ func (ld *loopDevice) CreateSnapshot(volume *v1.PersistentVolume, pvdNamespacedN
 
 func (ld *loopDevice) DeleteSnapshot(volume *v1.PersistentVolume, pvdNamespacedName string,
 	log logrus.FieldLogger) error {
-	pv := Disk("").PV(volume)
+	disk := ""
+	if volume.Spec.CSI.VolumeAttributes != nil {
+		disk = volume.Spec.CSI.VolumeAttributes[DiskSelector]
+	}
+	pv := Disk(disk).PV(volume)
 	snapshot := pv.Snapshot(pvdNamespacedName)
 	log.Infof("delete snapshot %s", snapshot.Path())
 	// we can get here even if the snapshot image is not mounted, so we need to umount it anyway.
